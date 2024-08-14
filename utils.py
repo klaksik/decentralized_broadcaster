@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import socket
@@ -93,7 +94,13 @@ class Utils:
         if os.path.exists('data.json'):
             with open('data.json', 'r') as f:
                 return json.load(f)
-        return [('212.80.7.69', 21037)]
+        return []
+
+    @staticmethod
+    def calculate_hash(block):
+        block_string = json.dumps(block, sort_keys=True).encode()
+        return hashlib.sha256(block_string).hexdigest()
+
     @staticmethod
     def remove_node(self, conn: socket.socket) -> None:
         """
@@ -108,7 +115,7 @@ class Utils:
         conn.close()
 
     @staticmethod
-    def check_node_working(NODE_IP, NODE_PORT, check_node: Tuple[str, int]) -> bool:
+    def check_node_working(node_ip, node_port, check_node: Tuple[str, int]) -> bool:
         """
         Проверяет, работает ли узел, отправляя ему PING и ожидая PONG.
         """
@@ -117,8 +124,8 @@ class Utils:
                 conn.settimeout(5)
                 conn.connect(check_node)
 
-                ip_bytes = socket.inet_aton(NODE_IP)
-                port_bytes = struct.pack("<H", NODE_PORT)
+                ip_bytes = socket.inet_aton(node_ip)
+                port_bytes = struct.pack("<H", node_port)
                 payload = ip_bytes + port_bytes
 
                 conn.sendall(Utils.create_message("handshake", payload))
@@ -142,3 +149,10 @@ class Utils:
         except (socket.timeout, socket.error) as e:
             print(f"Failed to connect to {check_node}: {e}")
         return False
+
+    @staticmethod
+    def create_handshake_message(ip: str, port: int) -> bytes:
+        ip_bytes = socket.inet_aton(ip)
+        port_bytes = struct.pack("<H", port)
+        return b"handshake" + struct.pack("<I", len(ip_bytes + port_bytes)) + ip_bytes + port_bytes
+
