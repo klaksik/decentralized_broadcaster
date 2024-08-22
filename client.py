@@ -1,3 +1,5 @@
+import json
+import random
 import socket
 import threading
 import struct
@@ -128,6 +130,7 @@ class Client:
                             Utils.save_known_nodes(self.node.known_nodes)  # Сохраняем изменения
 
             time.sleep(CONNECT_INTERVAL)
+
     def ping_nodes(self) -> None:
         """
         Отправляет ping сообщения всем подключенным узлам и обрабатывает их ответы.
@@ -233,15 +236,26 @@ class Client:
             time.sleep(UPDATE_INTERVAL)
 
     def update_blockchain(self) -> None:
+        """
+        Continuously checks for discrepancies between the local blockchain and the majority blockchain hash.
+        If a majority hash differs from the local hash, attempts to update the blockchain by retrieving the next block.
+        """
         while True:
+            # Get your own blockchain's hash
+            own_blocks_hash = self.node.get_blocks_hash()
+
+            # Dictionary to count the occurrences of each hash received from other nodes
+            hash_counts = {}
+            hash_connections = {}  # Track which connections sent each hash
+
             with self.node.lock:
                 current_connections = self.client_connections[:]
                 for conn in current_connections:
                     try:
-                        # Запрос списка узлов
+                        # Request block hash from the connection
                         conn.sendall(Utils.create_message("getblockshash", b""))
 
-                        # Использование select для установки таймаута
+                        # Use select to set a timeout for the response
                         ready_to_read, _, _ = select.select([conn], [], [], RESPONSE_TIMEOUT)
 
                         if ready_to_read:
@@ -255,13 +269,25 @@ class Client:
 
                             payload = response[16:16 + payload_length]
                             checksum_received = response[16 + payload_length:20 + payload_length]
-                            # Проверяем контрольную сумму
+
+                            # Verify checksum
                             checksum_calculated = struct.pack("<I", sum(header + payload) % 2 ** 32)
                             if checksum_received != checksum_calculated:
                                 print("Checksum mismatch")
                                 continue
 
                             if command == "blockshash":
+                                # Process the received blocks hash
+                                received_hash = payload.decode('utf-8')
+                                print(f"Received blocks hash: {received_hash}")
+
+                                # Update hash counts
+                                if received_hash in hash_counts:
+                                    hash_counts[received_hash] += 1
+                                    hash_connections[received_hash].append(conn)
+                                else:
+                                    hash_counts[received_hash] = 1
+                                    hash_connections[received_hash] = [conn]
 
                         else:
                             print("No response, closing connection.")
@@ -270,6 +296,32 @@ class Client:
                     except (socket.error, OSError, BrokenPipeError) as e:
                         print(f"Error with connection: {e}")
                         Utils.remove_node(self, conn)
+
+                # Determine the majority hash and its count
+                if hash_counts:
+                    majority_hash, majority_count = max(hash_counts.items(), key=lambda item: item[1])
+                    total_hashes = sum(hash_counts.values())
+
+                    # Check if the majority is at least 51%
+                    if majority_count >= total_hashes * 0.51:
+                        if majority_hash != own_blocks_hash:
+                            print("Majority of nodes have a different blockchain. Updating blockchain.")
+
+                            # Only keep connections that sent the majority hash
+                            majority_connections = hash_connections[majority_hash]
+
+                            while majority_hash != self.node.get_blocks_hash():
+                                with self.node.lock:
+                                    if majority_connections:
+                                        conn = random.choice(majority_connections)
+                                        res = Utils.get_new_block(self, conn)
+                                        if not res:
+                                            majority_connections.remove(conn)
+                                    else:
+                                        break
+                        else:
+                            print("No need to update blockchain. Local blockchain matches majority.")
+
             time.sleep(UPDATE_INTERVAL)
 
     def start_client(self) -> None:

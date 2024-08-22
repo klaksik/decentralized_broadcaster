@@ -11,17 +11,18 @@ GENESIS_BLOCK = {
     "index": 0,
     "previous_hash": "0",
     "timestamp": 0,
-    "data": "Genesis Block",
+    "data": "Welcome to Decentralized Broadcaster",
     "nonce": 0,
     "path": "",
     "file_name": "",
-    "public_key": "",
+    "pubkey": "",
+    "hash_pubkey": "",
     "data_sign": "",
     "hash": "0"
 }
 
 BLOCKCHAIN_DIR = "blockchain"
-BASE_DIFFICULTY = 4
 DIFFICULTY_ADJUSTMENT_INTERVAL = 600  # Интервал для корректировки сложности в секундах
 BLOCK_GENERATION_TARGET = 10  # Целевое время генерации блока в секундах
 START_NODES = []
+BASE_DIFFICULTY = 2 ** 256 // 10000  # Базовый уровень difficulty_target

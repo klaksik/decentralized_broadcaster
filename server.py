@@ -66,30 +66,25 @@ class Server:
                     conn.sendall(Utils.create_message("blockshash", blocks_hash))
                     print(f"Sent blocks hash: {blocks_hash.decode('utf-8')}")
 
-                elif command == "getblocks":
-                    blocks = self.node.get_blocks()
-                    blocks_data = json.dumps(blocks).encode('utf-8')
-                    conn.sendall(Utils.create_message("blocks", blocks_data))
-                    print(f"Sent blocks: {blocks}")
+                elif command == "getnextblock":
+                    try:
+                        payload_length = struct.unpack("<I", header[12:16])[0]
+                        if len(data) < 16 + payload_length:
+                            continue
 
-                elif command == "block":
-                    payload_length = struct.unpack("<I", header[12:16])[0]
-                    if len(data) < 16 + payload_length:
-                        continue
+                        payload = data[16:16 + payload_length]
 
-                    payload = data[16:16 + payload_length]
-                    block = json.loads(payload.decode('utf-8'))
-                    if self.node.validate_block(block):
-                        self.node.save_blocks([block])
-                        self.node.last_block_time = block['timestamp']
-                        print(f"Block validated and saved: {block}")
-                    else:
-                        print(f"Invalid block received: {block}")
+                        index = payload.decode('utf-8')
+                        next_block = Utils.get_block(blocks_path=self.node.blocks_path, index=int(index)+1)
 
-                elif command == "difficulty":
-                    difficulty = struct.unpack("<I", data[16:20])[0]
-                    self.node.difficulty = difficulty
-                    print(f"Difficulty updated: {difficulty}")
+                        if next_block:
+                            next_block_data = json.dumps(next_block).encode('utf-8')
+                            conn.sendall(Utils.create_message("nextblock", next_block_data))
+                            print(f"Sent next block: {next_block}")
+                        else:
+                            conn.sendall(Utils.create_message("nonexistentblock", b""))
+                    except Exception as e:
+                        print(f"Error handling getnextblock: {e}")
 
         except socket.timeout:
             print("Client connection timed out.")
