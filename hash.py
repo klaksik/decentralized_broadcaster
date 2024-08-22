@@ -1,5 +1,4 @@
 import hashlib
-import tqdm
 
 
 def calculate_hash(nonce: str) -> str:
